@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
+using studentapis.DTOs;
 using System.Data;
 using tsting_api.Models;
 
@@ -22,7 +23,7 @@ namespace tsting_api.Controllers
         [HttpGet]
         public async Task<IActionResult> GetStudents()
         {
-            var students = new List<Student>();
+            var students = new List<StudentReadDTO>();
 
             using SqlConnection con = new SqlConnection(_connectionString);
             await con.OpenAsync();
@@ -32,27 +33,35 @@ namespace tsting_api.Controllers
 
             while (await reader.ReadAsync())
             {
-                students.Add(new Student
+                //students.Add(new Student
+                //{
+                //    Id = Convert.ToInt32(reader["Id"]),
+                //    Name = reader["Name"].ToString(),
+                //    Age = Convert.ToInt32(reader["Age"]),
+                //    //Subject = reader["Subject"].ToString(),
+                //    //DOB = Convert.ToDateTime(reader["DOB"])
+                //});
+                //AddStudent dto 
+
+                students.Add(new StudentReadDTO
                 {
                     Id = Convert.ToInt32(reader["Id"]),
                     Name = reader["Name"].ToString(),
                     Age = Convert.ToInt32(reader["Age"]),
-                    //Subject = reader["Subject"].ToString(),
-                    //DOB = Convert.ToDateTime(reader["DOB"])
+
+
                 });
             }
 
             return Ok(students);
         }
-
-        // ✅ GET BY ID
         [HttpGet("{id}")]
         public async Task<IActionResult> GetStudent(int id)
         {
             using SqlConnection con = new SqlConnection(_connectionString);
             await con.OpenAsync();
 
-            string query = "SELECT * FROM Students WHERE Id=@Id";
+            string query = "SELECT Id, Name, Email, Age FROM Students WHERE Id=@Id";
             using SqlCommand cmd = new SqlCommand(query, con);
             cmd.Parameters.AddWithValue("@Id", id);
 
@@ -60,61 +69,61 @@ namespace tsting_api.Controllers
 
             if (await reader.ReadAsync())
             {
-                var student = new Student
+                var studentDTO = new StudentReadDTO
                 {
                     Id = Convert.ToInt32(reader["Id"]),
                     Name = reader["Name"].ToString(),
+                    Email = reader["Email"].ToString(),
                     Age = Convert.ToInt32(reader["Age"]),
-                    //Subject = reader["Subject"].ToString(),
-                    //DOB = Convert.ToDateTime(reader["DOB"])
                 };
 
-                return Ok(student);
+                return Ok(studentDTO);
             }
 
-            return NotFound();
+            return NotFound("Student not found");
         }
+
 
         // ✅ POST
         [HttpPost]
-        public async Task<IActionResult> AddStudent(Student student)
+        public async Task<IActionResult> AddStudent(StudentCreateDTO dto)
         {
             using SqlConnection con = new SqlConnection(_connectionString);
             await con.OpenAsync();
 
-            string query = @"INSERT INTO Students (Name, Age, Subject, DOB)
-                             VALUES (@Name, @Age, @Subject, @DOB)";
+            string query = @"INSERT INTO Students (Name,Email, Age)
+                             VALUES (@Name,@Email, @Age)";
 
             using SqlCommand cmd = new SqlCommand(query, con);
-            cmd.Parameters.AddWithValue("@Name", student.Name);
-            cmd.Parameters.AddWithValue("@Age", student.Age);
-            //cmd.Parameters.AddWithValue("@Subject", student.Subject);
-            //cmd.Parameters.AddWithValue("@DOB", student.DOB);
+            cmd.Parameters.AddWithValue("@Name", dto.Name);
+            cmd.Parameters.AddWithValue("@Email", dto.Email);
+            cmd.Parameters.AddWithValue("@Age", dto.Age ?? (object)DBNull.Value);
+            //cmd.Parameters.AddWithValue("@DOB", student.DOB);, @Subject, @DOB , Subject, DOB
 
             await cmd.ExecuteNonQueryAsync();
 
-            return Ok(student);
+            return Ok(dto);
         }
 
         // ✅ PUT
         [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateStudent(int id, Student student)
+        public async Task<IActionResult> UpdateStudent(int id, StudentUpdateDTO dto)
         {
-            if (id != student.Id)
+            if (id != dto.Id)
                 return BadRequest();
 
             using SqlConnection con = new SqlConnection(_connectionString);
             await con.OpenAsync();
 
             string query = @"UPDATE Students 
-                             SET Name=@Name, Age=@Age, Subject=@Subject, DOB=@DOB 
+                             SET Name=@Name, Email=@Email ,Age=@Age
                              WHERE Id=@Id";
-
+           //, Subject = @Subject, DOB = @DOB
             using SqlCommand cmd = new SqlCommand(query, con);
             cmd.Parameters.AddWithValue("@Id", id);
-            cmd.Parameters.AddWithValue("@Name", student.Name);
-            cmd.Parameters.AddWithValue("@Age", student.Age);
-            //cmd.Parameters.AddWithValue("@Subject", student.Subject);
+            cmd.Parameters.AddWithValue("@Name", dto.Name);
+            cmd.Parameters.AddWithValue("@Email", dto.Email);
+            cmd.Parameters.AddWithValue("@Age", dto.Age);
             //cmd.Parameters.AddWithValue("@DOB", student.DOB);
 
             int rows = await cmd.ExecuteNonQueryAsync();
@@ -122,27 +131,35 @@ namespace tsting_api.Controllers
             if (rows == 0)
                 return NotFound();
 
-            return Ok(student);
+            return Ok(dto);
         }
 
-        // ✅ DELETE (Admin Role Only)
         [Authorize(Roles = "Admin")]
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteStudent(int id)
         {
-            using SqlConnection con = new SqlConnection(_connectionString);
-            await con.OpenAsync();
+            try
+            {
+                using SqlConnection con = new SqlConnection(_connectionString);
+                await con.OpenAsync();
 
-            string query = "DELETE FROM Students WHERE Id=@Id";
-            using SqlCommand cmd = new SqlCommand(query, con);
-            cmd.Parameters.AddWithValue("@Id", id);
+                string query = "DELETE FROM Students WHERE Id=@Id";
+                using SqlCommand cmd = new SqlCommand(query, con);
+                cmd.Parameters.AddWithValue("@Id", id);
 
-            int rows = await cmd.ExecuteNonQueryAsync();
+                int rows = await cmd.ExecuteNonQueryAsync();
 
-            if (rows == 0)
-                return NotFound();
+                if (rows == 0)
+                    return NotFound(new { Message = "Student not found", StudentId = id });
 
-            return Ok("Deleted Successfully");
+                return Ok(new { Message = "Deleted Successfully", StudentId = id });
+            }
+            catch (Exception ex)
+            {
+                // Log error here
+                return StatusCode(500, new { Message = "Internal Server Error", Error = ex.Message });
+            }
         }
+
     }
 }
